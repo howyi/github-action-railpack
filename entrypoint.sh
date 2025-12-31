@@ -95,10 +95,27 @@ fi
 
 # Prepare environment variables to pass to railpack
 PREPARE_ARGS=()
+SECRET_ARGS=()
 if [ -n "${INPUT_ENV}" ]; then
   IFS=',' read -ra ENVS <<<"$INPUT_ENV"
   for env_var in "${ENVS[@]}"; do
+    # Trim whitespace
+    env_var=$(echo "$env_var" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    if [ -z "$env_var" ]; then continue; fi
+
     PREPARE_ARGS+=("--env" "$env_var")
+
+    # Extract key
+    if [[ "$env_var" == *"="* ]]; then
+      key="${env_var%%=*}"
+      val="${env_var#*=}"
+      # Export the variable so docker can read it
+      export "$key=$val"
+    else
+      key="$env_var"
+    fi
+
+    SECRET_ARGS+=("--secret" "id=$key,env=$key")
   done
 fi
 
@@ -109,6 +126,9 @@ railpack prepare "${PREPARE_ARGS[@]}" --plan-out "$RAILPACK_PLAN_FILE" "$INPUT_C
 
 # Build docker buildx command
 BUILD_CMD="docker buildx build"
+for secret in "${SECRET_ARGS[@]}"; do
+  BUILD_CMD="$BUILD_CMD $secret"
+done
 BUILD_CMD="$BUILD_CMD --build-arg BUILDKIT_SYNTAX=ghcr.io/railwayapp/railpack-frontend"
 BUILD_CMD="$BUILD_CMD -f $RAILPACK_PLAN_FILE"
 
